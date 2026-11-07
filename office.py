@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from dotenv import load_dotenv
 
 from scout.events import EventBus
+from scout.installed import installed_tools
 from scout.pipeline import DATA, execute
 
 ROOT = Path(__file__).parent
@@ -40,6 +41,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/replay":
             path = DATA / "events" / "latest.json"
             body = path.read_bytes() if path.exists() else b"[]"
+            self._send(200, body, "application/json; charset=utf-8")
+        elif url.path == "/api/installed":
+            body = json.dumps(installed_tools(), ensure_ascii=False).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
         elif url.path == "/run":
             self._stream_run(send=parse_qs(url.query).get("send") == ["1"])

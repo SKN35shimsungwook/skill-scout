@@ -25,8 +25,9 @@ def build(profile: dict, picks: list[dict], new_hits: list[dict], new_total: int
         badge = "공식 " if p.get("official") else ""
         check = {"PASS": "✅", "WARNING": "⚠️"}.get(p.get("verdict"), "")
         lines += [
-            f"{i}. **{p['name']}** ({badge}{p['kind']})  {_short(p['description'])}",
+            f"{i}. **{p['name']}** ({badge}{p['kind']})  {_short(p['guide']['summary'] if p.get('guide', {}).get('known') else p['description'])}",
             f"   ↳ 이유: {p['reason']}",
+            *([f"   ↳ 언제: {p['guide']['cases'][0]} ({p['guide']['tier']})"] if p.get("guide") else []),
             *([f"   ↳ 검증: {check} {p['verdict_note']}"] if p.get("verdict_note") else []),
             f"   ↳ 설치: `{p['install']}`",
         ]

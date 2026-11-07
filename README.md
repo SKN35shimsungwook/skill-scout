@@ -52,6 +52,7 @@ scout/installed.py   이미 가진 스킬·플러그인
 scout/recommend.py   점수와 추천 이유
 scout/verify.py      검증팀 검사 (GitHub 저장소 상태)
 scout/briefing.py    브리핑 문장, 디스코드 전송
+scout/guides.py      도구별 한국어 설명·사용 경우·예시 문장·추천 등급
 data/                상태·캐시·실행 기록 (저장소에 올리지 않음)
 ```
 

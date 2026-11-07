@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 
 from . import briefing, catalog
 from .events import EventBus
+from .guides import guide_for
 from .installed import installed_names
 from .profile import build_profile
 from .recommend import score_items
@@ -102,7 +103,7 @@ def build_graph(bus: EventBus, data_dir: Path):
         first_run = not seen
         new_ids = set() if first_run else {it["id"] for it in s["items"]} - seen
         new_hits = [r for r in s["ranked"] if r["id"] in new_ids][:3]
-        picks = pool[: s["top"]]
+        picks = [{**p, "guide": guide_for(p)} for p in pool[: s["top"]]]
         text = briefing.build(s["profile"], picks, new_hits, len(new_ids), s.get("errors", []))
         if first_run:
             text += f"\n\n(첫 실행: 후보 {len(s['items'])}개를 기준으로 저장했어요. 다음부터 새로 나온 것을 따로 알려 드려요.)"
@@ -120,7 +121,7 @@ def build_graph(bus: EventBus, data_dir: Path):
         bus.emit("consultant", "done", summary)
         bus.emit("consultant", "result", "브리핑 완료", {
             "picks": [{k: p.get(k) for k in ("name", "kind", "official", "description", "reason", "install", "url",
-                                             "verdict", "verdict_note")} for p in s["picks"]],
+                                             "verdict", "verdict_note", "guide")} for p in s["picks"]],
             "rejected": [{"name": r["name"], "note": r["verdict_note"]} for r in s.get("rejected", [])],
             "summary": summary,
         })
