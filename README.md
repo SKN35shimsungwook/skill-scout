@@ -8,32 +8,51 @@ Claude Code를 매일 쓰는데, 확인해 보니 설치한 플러그인이 0개
 
 ## 어떻게 동작하나
 
-1. **내 작업 프로필**: `~/.claude/projects`의 대화 기록에서 제가 직접 쓴 메시지만 읽고, "배포", "발표", "Streamlit" 같은 작업 신호가 몇 번 나왔는지 셉니다. 원문은 PC 밖으로 나가지 않고 숫자만 씁니다.
-2. **후보 모으기**: 공식 플러그인 마켓, Anthropic 공식 스킬, skills.sh 인기 스킬을 가져옵니다.
-3. **추천**: 이미 있는 것(직접 만든 스킬, 데스크톱 앱 기본 스킬)은 빼고, 제 작업 신호와 겹치는 정도로 순위를 매깁니다. 여러 후보에 두루 걸리는 흔한 신호는 가중치를 낮췄습니다(IDF).
-4. **새로 나온 것 감지**: 전날 목록과 비교해서 새로 올라온 후보 중 제 작업과 관련 있는 것을 따로 알려 줍니다.
-5. **알림**: 결과를 디스코드 웹후크로 보냅니다. LLM을 쓰지 않아서 토큰 비용이 들지 않습니다.
+팀 기획서처럼 다섯 부서가 차례로 일을 넘기는 구조로 만들었습니다. 흐름은 LangGraph로 연결했고, 부서마다 규칙 기반이라 LLM 토큰은 쓰지 않습니다.
+
+```
+① 수집기 → ② 점검팀 → ③ 검증팀 ─(통과 후보 부족)→ ② 점검팀 재검토
+                                 └(충분)→ ④ 브리핑팀 → ⑤ 상담팀
+```
+
+| 부서 | 하는 일 |
+|---|---|
+| ① 수집기 | 제 대화 기록에서 작업 신호를 세고(원문은 PC 밖으로 안 나감), 공식 플러그인 마켓·Anthropic 스킬·skills.sh에서 후보를 모읍니다 |
+| ② 점검팀 | 이미 있는 것은 빼고, 제 작업과 겹치는 정도로 순위를 매겨 4개씩 검증팀에 넘깁니다. 흔한 신호는 가중치를 낮췄습니다(IDF) |
+| ③ 검증팀 | GitHub 저장소가 있는지, 보관 처리됐는지, 1년 넘게 방치됐는지, 사용자가 너무 적은지 보고 PASS·경고·실패를 판정합니다. 통과가 모자라면 점검팀에 다음 후보를 요청합니다 |
+| ④ 브리핑팀 | 통과한 후보로 브리핑을 쓰고, 전날과 비교해 새로 나온 것을 따로 표시해 디스코드로 보냅니다 |
+| ⑤ 상담팀 | 오늘 무엇부터 써 보면 좋을지 한 줄로 정리합니다. 설치는 제가 직접 승인합니다 |
+
+부서마다 진행 상황을 이벤트로 남기고, 2D 오피스 화면이 그 이벤트를 받아 캐릭터를 움직입니다.
 
 ## 실행
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env        # DISCORD_WEBHOOK_URL 입력
-python run.py --dry-run     # 전송 없이 결과만 확인 (data/latest_briefing.md)
-python run.py               # 디스코드로 전송
+python run.py --dry-run --verbose   # 전송 없이 부서별 진행 상황과 결과 확인
+python run.py                       # 디스코드로 전송 (매일 아침 8시 작업 스케줄러가 실행)
+python office.py                    # 2D 오피스 화면 (http://localhost:8565)
 ```
 
 ## 폴더 구조
 
 ```
-run.py              실행 진입점
-scout/signals.py    작업 신호 사전 (내 대화 단어 ↔ 후보 설명 단어)
-scout/profile.py    대화 기록 → 작업 신호 횟수
-scout/catalog.py    후보 수집 (공식 마켓, Anthropic 스킬, skills.sh)
-scout/installed.py  이미 가진 스킬·플러그인
-scout/recommend.py  점수와 추천 이유
-scout/briefing.py   브리핑 문장, 디스코드 전송
-data/               상태·캐시·최근 결과 (저장소에 올리지 않음)
+run.py               아침 자동 실행 진입점
+office.py            2D 오피스 화면 서버 (실시간 이벤트 전달)
+static/office.html   2D 오피스 화면
+run_daily.bat        작업 스케줄러가 실행하는 파일
+scout/graph.py       부서 5개 LangGraph 흐름
+scout/events.py      부서 진행 상황 이벤트 기록
+scout/pipeline.py    한 번의 점검 실행 (상태 저장·전송)
+scout/signals.py     작업 신호 사전 (내 대화 단어 ↔ 후보 설명 단어)
+scout/profile.py     대화 기록 → 작업 신호 횟수
+scout/catalog.py     후보 수집
+scout/installed.py   이미 가진 스킬·플러그인
+scout/recommend.py   점수와 추천 이유
+scout/verify.py      검증팀 검사 (GitHub 저장소 상태)
+scout/briefing.py    브리핑 문장, 디스코드 전송
+data/                상태·캐시·실행 기록 (저장소에 올리지 않음)
 ```
 
 ## 아직 부족한 점

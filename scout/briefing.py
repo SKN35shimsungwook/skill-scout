@@ -23,9 +23,11 @@ def build(profile: dict, picks: list[dict], new_hits: list[dict], new_total: int
     ]
     for i, p in enumerate(picks, 1):
         badge = "공식 " if p.get("official") else ""
+        check = {"PASS": "✅", "WARNING": "⚠️"}.get(p.get("verdict"), "")
         lines += [
             f"{i}. **{p['name']}** ({badge}{p['kind']})  {_short(p['description'])}",
             f"   ↳ 이유: {p['reason']}",
+            *([f"   ↳ 검증: {check} {p['verdict_note']}"] if p.get("verdict_note") else []),
             f"   ↳ 설치: `{p['install']}`",
         ]
     if new_hits:

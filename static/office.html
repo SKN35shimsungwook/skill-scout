@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>skill-scout 오피스</title>
+<style>
+  :root {
+    --bg: #141a2e; --panel: #1d2540; --line: #2f3a5f; --ink: #e8ecf6; --sub: #9aa6c4;
+    --collector: #8B5CF6; --inspector: #F59E0B; --verifier: #10B981; --briefer: #EF4444; --consultant: #4F7CFF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; color: #fff; background: var(--consultant); }
+  button.ghost { background: transparent; border: 1.5px solid var(--line); color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  label.send { display: flex; align-items: center; gap: 6px; color: var(--sub); font-size: 14px; }
+  #status { margin-left: auto; color: var(--sub); font-size: 14px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .office { background: #0f1424; border-radius: 12px; overflow: hidden; align-self: start; }
+  .office svg { display: block; width: 100%; height: auto; font-family: "Malgun Gothic", sans-serif; }
+  aside { background: var(--panel); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; min-height: 0; max-height: 640px; }
+  aside h2 { font-size: 15px; margin: 0 0 10px; }
+  #timeline { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; font-size: 13px; }
+  #timeline li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  #timeline .who { font-weight: 800; }
+  #timeline li.retry .msg { color: #fca5a5; }
+  section.results { padding: 0 20px 28px; }
+  section.results h2 { font-size: 16px; }
+  #summary { background: var(--panel); border-left: 4px solid var(--consultant); padding: 10px 14px; border-radius: 0 8px 8px 0; margin-bottom: 12px; }
+  #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border-radius: 10px; padding: 14px; border: 1px solid var(--line); }
+  .card h3 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 99px; background: var(--line); color: var(--ink); }
+  .badge.PASS { background: #065f46; } .badge.WARNING { background: #92400e; } .badge.official { background: #1e3a8a; }
+  .card p { margin: 4px 0; font-size: 13px; color: var(--sub); }
+  .card code { display: block; background: #0f1424; padding: 8px; border-radius: 6px; font-size: 12px; margin-top: 8px; word-break: break-all; }
+  .card .row { display: flex; gap: 8px; margin-top: 8px; }
+  .card .row button { padding: 6px 10px; font-size: 12px; }
+  .bob { animation: bob .45s ease-in-out infinite alternate; }
+  @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+  .flash { animation: flash .5s ease-in-out 3; }
+  @keyframes flash { 50% { opacity: .25; } }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #0f1424; border: 1px solid var(--line); padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧩 skill-scout 오피스</h1>
+  <button id="runBtn">▶ 지금 점검</button>
+  <label class="send"><input type="checkbox" id="sendChk"> 디스코드로도 보내기</label>
+  <button class="ghost" id="replayBtn">↺ 지난 실행 다시 보기</button>
+  <span id="status">대기 중</span>
+</header>
+<main>
+  <div class="office"><svg id="office" viewBox="0 0 1000 620" shape-rendering="crispEdges"></svg></div>
+  <aside><h2>실시간 업무 기록</h2><ul id="timeline"></ul></aside>
+</main>
+<section class="results">
+  <h2>오늘의 추천</h2>
+  <div id="summary">'지금 점검'을 누르면 부서들이 일을 시작해요.</div>
+  <div id="cards"></div>
+</section>
+<div id="toast"></div>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("office");
+const COLORS = { collector: "#8B5CF6", inspector: "#F59E0B", verifier: "#10B981", briefer: "#EF4444", consultant: "#4F7CFF" };
+const NAMES = { collector: "수집기", inspector: "점검팀", verifier: "검증팀", briefer: "브리핑팀", consultant: "상담팀" };
+const NEXT = { collector: "inspector", inspector: "verifier", verifier: "briefer", briefer: "consultant" };
+// 부서별 위치: 캐릭터 기준점, 말풍선 위치, 서류가 오가는 지점
+const POS = {
+  collector:  { chars: [[845, 212]], bubble: [845, 288], hub: [800, 240], plate: [714, 104] },
+  inspector:  { chars: [[100, 250], [260, 250]], bubble: [230, 164], hub: [300, 230], plate: [36, 104] },
+  verifier:   { chars: [[790, 450]], bubble: [840, 330], hub: [740, 420], plate: [714, 340] },
+  briefer:    { chars: [[260, 470]], bubble: [190, 600], hub: [300, 540], plate: [36, 436] },
+  consultant: { chars: [[520, 150]], bubble: [520, 300], hub: [520, 230], plate: [580, 150] },
+};
+
+function el(tag, attrs = {}, parent = svg) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.appendChild(e);
+  return e;
+}
+function rect(x, y, w, h, fill, p = svg, extra = {}) { return el("rect", { x, y, width: w, height: h, fill, ...extra }, p); }
+function text(x, y, t, size, fill, p = svg, extra = {}) { const e = el("text", { x, y, "font-size": size, fill, "font-weight": 800, "text-anchor": "middle", ...extra }, p); e.textContent = t; return e; }
+
+function person(p, x, y, shirt, hair) {
+  const g = el("g", {}, p);
+  el("ellipse", { cx: x, cy: y + 44, rx: 15, ry: 5, fill: "rgba(0,0,0,.25)" }, g);
+  rect(x - 12, y + 18, 24, 22, shirt, g, { stroke: "#1f2937", "stroke-width": 2 });
+  rect(x - 10, y, 20, 18, "#F6C9A0", g, { stroke: "#1f2937", "stroke-width": 2 });
+  rect(x - 11, y - 3, 22, 8, hair, g, { stroke: "#1f2937", "stroke-width": 2 });
+  rect(x - 5, y + 9, 3, 3, "#1f2937", g); rect(x + 2, y + 9, 3, 3, "#1f2937", g);
+  return g;
+}
+function desk(x, y, w, screen) {
+  rect(x, y, w, 50, "#B07A4A", svg, { stroke: "#5b3a1e", "stroke-width": 2.5 });
+  rect(x + w / 2 - 26, y + 6, 52, 32, "#1f2937");
+  return rect(x + w / 2 - 22, y + 10, 44, 24, screen);
+}
+
+// ---------- 사무실 그리기 ----------
+rect(0, 0, 1000, 620, "#D99A5B");
+for (let i = 0; i < 620; i += 26) el("line", { x1: 0, y1: i, x2: 1000, y2: i, stroke: "#c4834a", "stroke-width": 2 });
+rect(0, 0, 1000, 86, "#EDE7DC"); rect(0, 82, 1000, 6, "#b9ad9a");
+rect(20, 12, 86, 60, "#7dd3fc", svg, { stroke: "#1f2937", "stroke-width": 3 });
+el("circle", { cx: 150, cy: 42, r: 20, fill: "#fff", stroke: "#1f2937", "stroke-width": 3 });
+el("line", { x1: 150, y1: 42, x2: 150, y2: 28, stroke: "#1f2937", "stroke-width": 3 });
+el("line", { x1: 150, y1: 42, x2: 160, y2: 48, stroke: "#1f2937", "stroke-width": 3 });
+rect(200, 12, 200, 60, "#fff", svg, { stroke: "#6b7280", "stroke-width": 3 });
+text(300, 38, "오늘의 아침 점검", 15, "#ef4444"); text(300, 60, "스킬 · 플러그인", 13, "#374151");
+// 서버실 (수집기)
+rect(700, 0, 300, 300, "#e5e7eb"); rect(700, 0, 300, 86, "#d6dde8");
+el("line", { x1: 700, y1: 0, x2: 700, y2: 250, stroke: "#3f3a34", "stroke-width": 10 });
+el("line", { x1: 700, y1: 300, x2: 760, y2: 300, stroke: "#3f3a34", "stroke-width": 10 });
+el("line", { x1: 830, y1: 300, x2: 1000, y2: 300, stroke: "#3f3a34", "stroke-width": 10 });
+const racks = [];
+["공식 마켓", "Anthropic", "skills.sh", "내 대화"].forEach((n, i) => {
+  const x = 716 + i * 70;
+  rect(x, 110, 56, 90, "#1f2937", svg, { stroke: "#000", "stroke-width": 3 });
+  for (let k = 0; k < 4; k++) { rect(x + 6, 118 + k * 20, 44, 12, "#374151"); racks.push(el("circle", { cx: x + 44, cy: 124 + k * 20, r: 3, fill: "#4b5563" })); }
+  rect(x - 4, 204, 64, 20, COLORS.collector, svg, { rx: 4 }); text(x + 28, 219, n, 11, "#fff");
+});
+// 점검팀 책상
+const inspScreens = [desk(40, 180, 120, "#7dd3fc"), desk(200, 180, 120, "#7dd3fc")];
+// 상담팀 안내 데스크
+rect(440, 196, 160, 44, "rgba(191,219,254,.8)", svg, { stroke: "#64748b", "stroke-width": 3, rx: 4 });
+person(svg, 470, 250, "#64748b", "#57534e"); text(470, 312, "나", 12, "#1f2937");
+// 검증팀
+el("line", { x1: 700, y1: 330, x2: 700, y2: 620, stroke: "#3f3a34", "stroke-width": 0 });
+const verScreen = desk(730, 380, 120, "#bbf7d0");
+rect(880, 372, 70, 90, "#fef3c7", svg, { stroke: "#1f2937", "stroke-width": 2.5, rx: 4 });
+const checks = [0, 1, 2].map(k => { const t = text(898, 400 + k * 22, "·", 16, "#9ca3af"); rect(910, 393 + k * 22, 30, 4, "#9ca3af"); return t; });
+// 브리핑팀 회의실
+rect(0, 420, 380, 200, "#9fb2d4");
+el("line", { x1: 0, y1: 420, x2: 250, y2: 420, stroke: "#3f3a34", "stroke-width": 10 });
+el("line", { x1: 330, y1: 420, x2: 380, y2: 420, stroke: "#3f3a34", "stroke-width": 10 });
+el("line", { x1: 380, y1: 420, x2: 380, y2: 620, stroke: "#3f3a34", "stroke-width": 10 });
+rect(50, 520, 200, 56, "#7c4a24", svg, { stroke: "#3b2414", "stroke-width": 3, rx: 6 });
+const envelope = rect(170, 530, 50, 32, "#fff", svg, { stroke: "#1f2937", "stroke-width": 2.5 });
+el("polyline", { points: "170,530 195,548 220,530", fill: "none", stroke: "#1f2937", "stroke-width": 2.5 });
+// 라운지
+rect(600, 470, 400, 150, "#E9D6B0");
+rect(900, 490, 80, 110, "#8b5a2b", svg, { stroke: "#3b2414", "stroke-width": 3 });
+for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) rect(906 + c * 14, 496 + r * 26, 11, 20, ["#0ea5e9", "#a855f7", "#f97316", "#22c55e"][(r + c) % 4]);
+text(940, 612, "스킬 서가", 11, "#1f2937");
+rect(640, 520, 150, 40, "#7e3aa8", svg, { stroke: "#3b0764", "stroke-width": 3, rx: 8 });
+rect(0, 0, 1000, 620, "none", svg, { stroke: "#2a2520", "stroke-width": 10 });
+
+// ---------- 부서별 캐릭터·명패·상태등·말풍선 ----------
+const HAIR = { collector: "#6b21a8", inspector: "#7c2d12", verifier: "#14532d", briefer: "#7f1d1d", consultant: "#111827" };
+const dept = {};
+for (const key of Object.keys(POS)) {
+  const p = POS[key];
+  const chars = p.chars.map(([x, y]) => person(svg, x, y, COLORS[key], HAIR[key]));
+  const [px, py] = p.plate;
+  const w = NAMES[key].length * 15 + 44;
+  rect(px, py, w, 28, COLORS[key], svg, { stroke: "#1f2937", "stroke-width": 2, rx: 6 });
+  const lamp = el("circle", { cx: px + 15, cy: py + 14, r: 7, fill: "#9ca3af", stroke: "#fff", "stroke-width": 2 });
+  text(px + 28, py + 19, NAMES[key], 14, "#fff", svg, { "text-anchor": "start" });
+  dept[key] = { chars, lamp };
+}
+const bubbles = {};
+for (const key of Object.keys(POS)) {
+  const g = el("g", { visibility: "hidden" });
+  const box = rect(0, 0, 10, 30, "#fff", g, { stroke: COLORS[key], "stroke-width": 2.5, rx: 8 });
+  const t = text(0, 0, "", 13, "#1f2937", g);
+  bubbles[key] = { g, box, t };
+}
+const doc = rect(-50, -50, 18, 22, "#fff", svg, { stroke: "#1f2937", "stroke-width": 2 });
+
+function say(key, msg, color) {
+  const b = bubbles[key]; const [x, y] = POS[key].bubble;
+  b.t.textContent = msg.length > 30 ? msg.slice(0, 29) + "…" : msg;
+  const w = b.t.getComputedTextLength() + 24;
+  b.box.setAttribute("x", x - w / 2); b.box.setAttribute("y", y - 21); b.box.setAttribute("width", w);
+  b.box.setAttribute("stroke", color || COLORS[key]);
+  b.t.setAttribute("x", x); b.t.setAttribute("y", y);
+  b.g.setAttribute("visibility", "visible");
+}
+function setState(key, state) {
+  const d = dept[key];
+  d.chars.forEach(c => c.classList.toggle("bob", state === "work"));
+  d.lamp.setAttribute("fill", { idle: "#9ca3af", work: "#fbbf24", done: "#22c55e", retry: "#ef4444" }[state]);
+  if (key === "collector") racks.forEach((r, i) => r.setAttribute("fill", state === "work" ? (i % 3 ? "#22c55e" : "#facc15") : "#4b5563"));
+  if (key === "inspector") inspScreens.forEach(s => s.setAttribute("fill", state === "work" ? "#fde68a" : "#7dd3fc"));
+}
+function fly(from, to, color) {
+  const [x1, y1] = POS[from].hub, [x2, y2] = POS[to].hub;
+  doc.setAttribute("stroke", color); const t0 = performance.now();
+  (function step(now) {
+    const k = Math.min(1, (now - t0) / 550);
+    doc.setAttribute("x", x1 + (x2 - x1) * k - 9); doc.setAttribute("y", y1 + (y2 - y1) * k - 11 - Math.sin(k * Math.PI) * 40);
+    if (k < 1) requestAnimationFrame(step); else doc.setAttribute("x", -50);
+  })(t0);
+}
+
+// ---------- 이벤트 처리 ----------
+const timeline = document.getElementById("timeline");
+const statusEl = document.getElementById("status");
+let verdictIdx = 0;
+function log(ev) {
+  const li = document.createElement("li"); li.className = ev.status;
+  li.innerHTML = `<span class="who" style="color:${COLORS[ev.dept] || "#fff"}">${NAMES[ev.dept] || ""}</span><span class="msg"></span>`;
+  li.querySelector(".msg").textContent = ev.msg;
+  timeline.appendChild(li); timeline.scrollTop = timeline.scrollHeight;
+}
+function handle(ev) {
+  if (ev.status === "end") return;
+  log(ev);
+  const k = ev.dept;
+  switch (ev.status) {
+    case "start": setState(k, "work"); say(k, ev.msg); statusEl.textContent = `${NAMES[k]} 일하는 중`; break;
+    case "work":
+      setState(k, "work"); say(k, ev.msg);
+      if (k === "verifier" && ev.data && ev.data.verdict) {
+        const c = checks[verdictIdx++ % 3]; c.textContent = { PASS: "✓", WARNING: "!", FAIL: "✕" }[ev.data.verdict];
+        c.setAttribute("fill", { PASS: "#16a34a", WARNING: "#d97706", FAIL: "#dc2626" }[ev.data.verdict]);
+      }
+      break;
+    case "done": setState(k, "done"); say(k, ev.msg); break;
+    case "handoff": if (NEXT[k]) fly(k, NEXT[k], COLORS[k]); break;
+    case "retry":
+      setState(k, "retry"); say(k, ev.msg, "#ef4444"); fly("verifier", "inspector", "#ef4444");
+      dept.verifier.lamp.classList.remove("flash"); void dept.verifier.lamp.getBBox(); dept.verifier.lamp.classList.add("flash");
+      break;
+    case "result": renderResults(ev.data); break;
+    case "sent": case "not_sent": toast(ev.msg); envelope.setAttribute("fill", ev.status === "sent" ? "#bbf7d0" : "#fff"); break;
+    case "error": case "busy": toast(ev.msg); statusEl.textContent = ev.msg; break;
+  }
+}
+function renderResults(data) {
+  document.getElementById("summary").textContent = "💬 " + data.summary;
+  const cards = document.getElementById("cards"); cards.innerHTML = "";
+  data.picks.forEach((p, i) => {
+    const c = document.createElement("div"); c.className = "card";
+    c.innerHTML = `<h3><span></span><span class="badge">${p.kind}</span>${p.official ? '<span class="badge official">공식</span>' : ""}
+      <span class="badge ${p.verdict}">${p.verdict === "PASS" ? "✅ 검증 통과" : "⚠️ 확인 필요"}</span></h3>
+      <p class="reason"></p><p class="note"></p><p class="desc"></p><code></code>
+      <div class="row"><button class="copy">설치 명령 복사</button>${p.url ? '<button class="ghost open">자세히 보기</button>' : ""}</div>`;
+    c.querySelector("h3 span").textContent = `${i + 1}. ${p.name}`;
+    c.querySelector(".reason").textContent = "이유: " + p.reason;
+    c.querySelector(".note").textContent = "검증: " + p.verdict_note;
+    c.querySelector(".desc").textContent = p.description.length > 160 ? p.description.slice(0, 159) + "…" : p.description;
+    c.querySelector("code").textContent = p.install;
+    c.querySelector(".copy").onclick = () => navigator.clipboard.writeText(p.install).then(() => toast("복사했어요. 직접 붙여 넣어 설치하세요"));
+    const open = c.querySelector(".open"); if (open) open.onclick = () => window.open(p.url, "_blank", "noopener");
+    cards.appendChild(c);
+  });
+}
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2500); }
+function reset() {
+  timeline.innerHTML = ""; verdictIdx = 0;
+  Object.keys(POS).forEach(k => { setState(k, "idle"); bubbles[k].g.setAttribute("visibility", "hidden"); });
+  checks.forEach(c => { c.textContent = "·"; c.setAttribute("fill", "#9ca3af"); });
+}
+function busy(on) { runBtn.disabled = replayBtn.disabled = on; if (!on) statusEl.textContent = "완료"; }
+
+const runBtn = document.getElementById("runBtn"), replayBtn = document.getElementById("replayBtn");
+runBtn.onclick = () => {
+  reset(); busy(true);
+  const es = new EventSource(`/run?send=${document.getElementById("sendChk").checked ? 1 : 0}`);
+  es.onmessage = m => { const ev = JSON.parse(m.data); handle(ev); if (["end", "busy"].includes(ev.status)) { es.close(); busy(false); } };
+  es.onerror = () => { es.close(); busy(false); toast("서버 연결이 끊겼어요"); };
+};
+replayBtn.onclick = async () => {
+  const evs = await (await fetch("/replay")).json();
+  if (!evs.length) return toast("아직 저장된 실행이 없어요. '지금 점검'을 먼저 눌러 주세요");
+  reset(); busy(true);
+  for (const ev of evs) { handle(ev); if (["start", "work", "done", "handoff", "retry"].includes(ev.status)) await new Promise(r => setTimeout(r, 450)); }
+  busy(false);
+};
+Object.keys(POS).forEach(k => setState(k, "idle"));
+</script>
+</body>
+</html>

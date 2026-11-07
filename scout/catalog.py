@@ -12,6 +12,15 @@ from pathlib import Path
 import requests
 
 UA = {"User-Agent": "skill-scout (personal recommender)"}
+GITHUB_RE = re.compile(r"github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:/|$)")
+
+
+def _github_repo(*candidates: str) -> str:
+    for c in candidates:
+        m = GITHUB_RE.search(c or "")
+        if m:
+            return f"{m.group(1)}/{m.group(2)}"
+    return ""
 LOCAL_MARKET = Path.home() / ".claude" / "plugins" / "marketplaces" / "claude-plugins-official" / ".claude-plugin" / "marketplace.json"
 MARKET_URL = "https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/.claude-plugin/marketplace.json"
 
@@ -34,6 +43,8 @@ def plugins() -> list[dict]:
             "official": (p.get("author") or {}).get("name") == "Anthropic" or isinstance(p.get("source"), str),
             "install": f"/plugin install {p['name']}@claude-plugins-official",
             "url": p.get("homepage") or "",
+            "repo": _github_repo(src.get("url", ""), f"github.com/{src['repo']}" if src.get("repo") else "", p.get("homepage", ""))
+                    or ("anthropics/claude-plugins-official" if isinstance(p.get("source"), str) else ""),
         })
     return items
 
@@ -63,6 +74,7 @@ def anthropic_skills() -> list[dict]:
             "official": True,
             "install": f"npx skills add https://github.com/{repo} --skill {name}",
             "url": f"https://github.com/{repo}/tree/main/{Path(t['path']).parent.as_posix()}",
+            "repo": repo,
         })
     return items
 
@@ -94,6 +106,7 @@ def skills_sh(cache_path: Path) -> list[dict]:
             "install": cache[slug]["install"] or f"npx skills add https://github.com/{owner}/{repo} --skill {name}",
             "url": f"https://skills.sh/{slug}",
             "rank": rank,
+            "repo": f"{owner}/{repo}",
         })
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
