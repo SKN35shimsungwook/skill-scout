@@ -113,8 +113,14 @@ def skills_sh(cache_path: Path) -> list[dict]:
     return items
 
 
-def collect(cache_dir: Path) -> tuple[list[dict], list[str]]:
-    """모든 출처를 모은다. 한 출처가 실패해도 나머지는 쓴다."""
+_MEMO: dict = {"at": 0.0, "items": None, "errors": None}
+
+
+def collect(cache_dir: Path, max_age: float = 0) -> tuple[list[dict], list[str]]:
+    """모든 출처를 모은다. 한 출처가 실패해도 나머지는 쓴다.
+    max_age(초)를 주면 그 시간 안에 모은 결과를 다시 쓴다 (채팅 상담이 매번 기다리지 않게)."""
+    if max_age and _MEMO["items"] is not None and time.time() - _MEMO["at"] < max_age:
+        return _MEMO["items"], _MEMO["errors"]
     items, errors = [], []
     for name, fn in (("공식 플러그인", plugins), ("Anthropic 스킬", anthropic_skills),
                      ("skills.sh", lambda: skills_sh(cache_dir / "skills_sh_cache.json"))):
@@ -122,4 +128,5 @@ def collect(cache_dir: Path) -> tuple[list[dict], list[str]]:
             items += fn()
         except Exception as e:
             errors.append(f"{name}: {e}")
+    _MEMO.update(at=time.time(), items=items, errors=errors)
     return items, errors

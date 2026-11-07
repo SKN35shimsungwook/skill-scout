@@ -3,7 +3,7 @@ import math
 import re
 
 from .profile import _count
-from .signals import SIGNALS
+from .signals import SIGNALS, VENDORS
 
 
 def _matched_signals(item: dict) -> list[str]:
@@ -11,8 +11,11 @@ def _matched_signals(item: dict) -> list[str]:
     return [key for key, (_, _, en_words) in SIGNALS.items() if _count(text, en_words)]
 
 
-def score_items(items: list[dict], profile: dict, installed: set[str], recent: dict[str, str]) -> list[dict]:
+def score_items(items: list[dict], profile: dict, installed: set[str], recent: dict[str, str],
+                keep_installed: bool = False) -> list[dict]:
+    """keep_installed=True면 이미 가진 것도 남긴다 (채팅 상담의 '이미 있어요' 용도)."""
     signals = profile["signals"]
+    mentioned = set(profile.get("vendors", []))
     matched = {it["id"]: _matched_signals(it) for it in items}
     # 여러 후보에 두루 걸리는 신호(흔한 신호)는 변별력이 낮으니 가중치를 낮춘다 (IDF)
     n = len(items) or 1
@@ -20,7 +23,7 @@ def score_items(items: list[dict], profile: dict, installed: set[str], recent: d
     idf = {k: math.log((n + 1) / (df[k] + 1)) for k in SIGNALS}
     scored = []
     for item in items:
-        if item["name"].lower() in installed or not item["description"]:
+        if not item["description"] or (item["name"].lower() in installed and not keep_installed):
             continue
         keys = [k for k in matched[item["id"]] if signals.get(k)]
         if not keys:
@@ -30,6 +33,9 @@ def score_items(items: list[dict], profile: dict, installed: set[str], recent: d
         score = sum(parts[:2])
         if item.get("official"):
             score *= 1.15
+        vendor = [v for v in VENDORS if _count(f"{item['name']} {item['description']}".lower().replace("-", " "), [v])]
+        if vendor and not mentioned & set(vendor):  # 안 쓰는 회사 서비스 전용이면 뒤로
+            score *= 0.35
         if item.get("rank"):  # skills.sh 인기 순위 가산점
             score *= 1 + 0.3 / math.sqrt(item["rank"])
         if item["id"] in recent:  # 최근 7일 안에 이미 추천한 건 뒤로

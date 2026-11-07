@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .signals import SIGNALS
+from .signals import SIGNALS, VENDORS
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
@@ -50,6 +50,7 @@ def _count(text: str, words: list[str]) -> int:
 def build_profile(days: int = 30) -> dict:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     counts: Counter = Counter()
+    vendors: set[str] = set()
     messages = sessions = 0
     for path in PROJECTS_DIR.glob("*/*.jsonl"):
         if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) < since:
@@ -58,8 +59,10 @@ def build_profile(days: int = 30) -> dict:
         for text in _user_texts(path, since):
             messages += 1
             used = True
+            vendors |= {v for v in VENDORS if _count(text, [v])}
             for key, (_, ko_words, _) in SIGNALS.items():
                 if _count(text, ko_words):
                     counts[key] += 1  # 메시지 하나당 신호 1회로 센다 (같은 말 반복에 휘둘리지 않게)
         sessions += used
-    return {"days": days, "sessions": sessions, "messages": messages, "signals": dict(counts.most_common())}
+    return {"days": days, "sessions": sessions, "messages": messages, "signals": dict(counts.most_common()),
+            "vendors": sorted(vendors)}

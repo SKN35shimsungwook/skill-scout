@@ -6,6 +6,17 @@
 
 Claude Code를 매일 쓰는데, 확인해 보니 설치한 플러그인이 0개였습니다. 공식 마켓에만 플러그인이 300개 넘게 있고 skills.sh 같은 곳에도 스킬이 계속 올라오는데, 무엇이 저한테 맞는지 고르기가 어려워서 그냥 안 쓰고 있었습니다. PDF를 그대로 올리다가 마크다운으로 바꾸면 토큰이 덜 든다는 것도 한참 뒤에 알았습니다. 이런 걸 누가 먼저 알려 주면 좋겠다고 생각해서, 최종 프로젝트(AI 사용 환경 관리 비서)의 "도구 맞춤" 기능을 제 기준으로 먼저 만들어 봤습니다.
 
+## 두 가지 사용 방법
+
+| 메뉴 | 기준 | 언제 |
+|---|---|---|
+| 💬 상담 | 지금 하려는 작업 | 새 작업 전에 "뭐 챙기면 돼?"라고 물으면 상담팀이 받아서 부서들이 준비물(이미 있는 도구 + 설치 추천)을 챙겨 줍니다 |
+| 🏢 아침 점검 | 최근 30일 내 사용 이력 | 매일 아침 8시 자동 실행 → 디스코드 브리핑. 사무실 화면에서 지금 실행도 됩니다 |
+
+상담팀만 Gemini 무료 API를 씁니다(질문 이해·답변 문장). 키가 없거나 한도를 넘으면 단어 매칭으로 대신합니다. 나머지 부서는 규칙 기반이라 토큰을 쓰지 않습니다. Gemini에는 상담 질문과 추천 결과만 보냅니다.
+
+화면은 4차 팀 프로젝트(Langration)의 디자인 규칙(밝은 배경, 검정 버튼, 보라 포인트, 사이드바 메뉴)을 따랐습니다.
+
 ## 어떻게 동작하나
 
 팀 기획서처럼 다섯 부서가 차례로 일을 넘기는 구조로 만들었습니다. 흐름은 LangGraph로 연결했고, 부서마다 규칙 기반이라 LLM 토큰은 쓰지 않습니다.
@@ -32,17 +43,20 @@ pip install -r requirements.txt
 cp .env.example .env        # DISCORD_WEBHOOK_URL 입력
 python run.py --dry-run --verbose   # 전송 없이 부서별 진행 상황과 결과 확인
 python run.py                       # 디스코드로 전송 (매일 아침 8시 작업 스케줄러가 실행)
-python office.py                    # 2D 오피스 화면 (http://localhost:8565)
+python office.py                    # 상담·사무실 화면 (http://localhost:8565)
 ```
 
 ## 폴더 구조
 
 ```
 run.py               아침 자동 실행 진입점
-office.py            2D 오피스 화면 서버 (실시간 이벤트 전달)
-static/office.html   2D 오피스 화면
+office.py            화면 서버 (상담 채팅·아침 점검 실시간 이벤트 전달)
+static/app.html      화면 (상담 · 사무실 · 내 도구 · 가이드)
+static/office.js     2D 픽셀 사무실
 run_daily.bat        작업 스케줄러가 실행하는 파일
-scout/graph.py       부서 5개 LangGraph 흐름
+scout/graph.py       아침 점검 LangGraph 흐름
+scout/graph_chat.py  상담 채팅 LangGraph 흐름
+scout/chat.py        상담팀 Gemini 연결 (없으면 단어 매칭)
 scout/events.py      부서 진행 상황 이벤트 기록
 scout/pipeline.py    한 번의 점검 실행 (상태 저장·전송)
 scout/signals.py     작업 신호 사전 (내 대화 단어 ↔ 후보 설명 단어)

@@ -4,6 +4,13 @@
 같은 신호에 걸리면 "내가 자주 하는 일"과 "그 후보가 하는 일"이 겹친다고 본다.
 """
 
+# 특정 회사 서비스 전용 도구: 내가 그 서비스를 말한 적이 없으면 추천 점수를 낮춘다
+VENDORS = ["aws", "azure", "gcp", "google cloud", "oracle", "salesforce", "snowflake", "databricks", "datadog",
+           "qdrant", "pinecone", "lark", "feishu", "carbone", "firebase", "atlassian", "jira", "sentry", "stripe",
+           "shopify", "hubspot", "zendesk", "twilio", "mongodb", "neon", "planetscale", "airtable", "asana", "linear",
+           "gitlab", "laravel", "wordpress", "sonarqube", "terraform", "kubernetes", "elastic",
+           "brightdata", "bright data", "dataverse", "microsoft", "power platform", "heygen"]
+
 # key: (한국어 라벨, 내 대화에서 찾을 단어, 후보 설명에서 찾을 단어)
 SIGNALS: dict[str, tuple[str, list[str], list[str]]] = {
     "pdf": ("PDF", ["pdf"], ["pdf"]),

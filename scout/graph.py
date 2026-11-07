@@ -43,6 +43,24 @@ class State(TypedDict, total=False):
     summary: str
 
 
+def verify_batch(bus: EventBus, checker: RepoChecker, s: dict) -> tuple[list, list, list]:
+    """검증팀: 이번 묶음 후보를 검사해 지금까지의 통과·경고·탈락 목록에 더한다 (아침 점검·채팅 상담 공용)."""
+    bus.emit("verifier", "start", f"후보 {len(s['candidates'])}개 출처·관리 상태 확인 중")
+    passed, warned, rejected = list(s.get("passed", [])), list(s.get("warned", [])), list(s.get("rejected", []))
+    for c in s["candidates"]:
+        verdict, why = verify(c, checker)
+        c = {**c, "verdict": verdict, "verdict_note": why}
+        {"PASS": passed, "WARNING": warned, "FAIL": rejected}[verdict].append(c)
+        icon = {"PASS": "✅", "WARNING": "⚠️", "FAIL": "❌"}[verdict]
+        bus.emit("verifier", "work", f"{icon} {c['name']} — {why}", {"name": c["name"], "verdict": verdict})
+    checker.save()
+    return passed, warned, rejected
+
+
+def enough_passed(s: dict, top: int) -> bool:
+    return len(s["passed"]) >= top or s["round"] >= MAX_ROUNDS or s["round"] * BATCH >= len(s["ranked"])
+
+
 def build_graph(bus: EventBus, data_dir: Path):
     checker = RepoChecker(data_dir / "github_cache.json")
 
@@ -75,17 +93,8 @@ def build_graph(bus: EventBus, data_dir: Path):
         return {"ranked": ranked, "candidates": cands, "round": rnd + 1}
 
     def verifier(s: State) -> dict:
-        bus.emit("verifier", "start", f"후보 {len(s['candidates'])}개 출처·관리 상태 확인 중")
-        passed, warned, rejected = list(s.get("passed", [])), list(s.get("warned", [])), list(s.get("rejected", []))
-        for c in s["candidates"]:
-            verdict, why = verify(c, checker)
-            c = {**c, "verdict": verdict, "verdict_note": why}
-            {"PASS": passed, "WARNING": warned, "FAIL": rejected}[verdict].append(c)
-            icon = {"PASS": "✅", "WARNING": "⚠️", "FAIL": "❌"}[verdict]
-            bus.emit("verifier", "work", f"{icon} {c['name']} — {why}", {"name": c["name"], "verdict": verdict})
-        checker.save()
-        enough = len(passed) >= s["top"] or s["round"] >= MAX_ROUNDS or s["round"] * BATCH >= len(s["ranked"])
-        if enough:
+        passed, warned, rejected = verify_batch(bus, checker, s)
+        if enough_passed({**s, "passed": passed}, s["top"]):
             bus.emit("verifier", "done", f"통과 {len(passed)} · 경고 {len(warned)} · 탈락 {len(rejected)}")
             bus.emit("verifier", "handoff", "브리핑팀에 전달")
         else:
@@ -93,8 +102,7 @@ def build_graph(bus: EventBus, data_dir: Path):
         return {"passed": passed, "warned": warned, "rejected": rejected}
 
     def route(s: State) -> str:
-        enough = len(s["passed"]) >= s["top"] or s["round"] >= MAX_ROUNDS or s["round"] * BATCH >= len(s["ranked"])
-        return "briefer" if enough else "inspector"
+        return "briefer" if enough_passed(s, s["top"]) else "inspector"
 
     def briefer(s: State) -> dict:
         bus.emit("briefer", "start", "아침 브리핑 작성 중")
