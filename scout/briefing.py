@@ -1,4 +1,5 @@
 """아침 브리핑 문장을 만들고 디스코드로 보낸다 (LLM을 쓰지 않아 토큰 비용 0)."""
+import time
 from datetime import datetime
 
 import requests
@@ -51,7 +52,13 @@ def _chunks(text: str) -> list[str]:
     return out + [cur] if cur.strip() else out
 
 
-def send_discord(webhook_url: str, text: str) -> None:
-    for chunk in _chunks(text):
-        res = requests.post(webhook_url, json={"content": chunk, "allowed_mentions": {"parse": []}}, timeout=30)
-        res.raise_for_status()
+def send_discord(webhook_url: str, sections: str | list[str]) -> None:
+    """섹션마다 메시지를 따로 보낸다. 한 섹션이 한도를 넘으면 그 섹션만 줄 단위로 나눈다."""
+    for section in [sections] if isinstance(sections, str) else sections:
+        for chunk in _chunks(section):
+            res = requests.post(webhook_url, json={"content": chunk, "allowed_mentions": {"parse": []}}, timeout=30)
+            if res.status_code == 429:  # 너무 빨리 보내면 디스코드가 잠깐 기다리라고 함
+                time.sleep(float(res.json().get("retry_after", 1)) + 0.2)
+                res = requests.post(webhook_url, json={"content": chunk, "allowed_mentions": {"parse": []}}, timeout=30)
+            res.raise_for_status()
+            time.sleep(0.6)

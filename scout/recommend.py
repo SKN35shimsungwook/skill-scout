@@ -25,6 +25,8 @@ def score_items(items: list[dict], profile: dict, installed: set[str], recent: d
     for item in items:
         if not item["description"] or (item["name"].lower() in installed and not keep_installed):
             continue
+        if re.match(r"\s*(moved to|deprecated|archived)", item["description"].lower()):
+            continue  # 다른 곳으로 옮겨 갔거나 지원이 끝난 도구
         keys = [k for k in matched[item["id"]] if signals.get(k)]
         if not keys:
             continue

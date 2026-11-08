@@ -20,13 +20,14 @@ def main() -> None:
     ap.add_argument("--days", type=int, default=30, help="최근 며칠 대화를 볼지")
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--verbose", action="store_true", help="부서별 진행 상황 출력")
+    ap.add_argument("--weekly", action="store_true", help="월요일이 아니어도 지난주 요약 포함")
     args = ap.parse_args()
     load_dotenv(Path(__file__).parent / ".env")
 
     bus = EventBus()
     if args.verbose:
         bus.subscribe(lambda e: print(f"[{e['name']}] {e['msg']}"))
-    result = execute(bus, send=not args.dry_run, days=args.days, top=args.top)
+    result = execute(bus, send=not args.dry_run, days=args.days, top=args.top, weekly=args.weekly or None)
     print(result["text"])
     if result["error"]:
         sys.exit(result["error"])

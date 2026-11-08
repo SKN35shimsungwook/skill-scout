@@ -1,4 +1,8 @@
-"""한 번의 점검 실행 (아침 자동 실행과 2D 오피스 화면이 함께 쓴다)."""
+"""한 번의 아침 점검 실행 (아침 자동 실행과 2D 오피스 화면이 함께 쓴다).
+
+디스코드에는 섹션마다 메시지를 따로 보낸다:
+어제 작업 → 상태 점검 → 사용량·팁·업데이트 → 도구 추천 → (월요일) 지난주 요약
+"""
 import json
 import os
 from datetime import datetime, timedelta
@@ -7,6 +11,7 @@ from pathlib import Path
 from . import briefing
 from .events import EventBus
 from .graph import run_graph
+from .morning import build_sections
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -17,14 +22,16 @@ def _load_state() -> dict:
     return json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {"seen": [], "recommended": {}}
 
 
-def execute(bus: EventBus, send: bool, days: int = 30, top: int = 5) -> dict:
+def execute(bus: EventBus, send: bool, days: int = 30, top: int = 5, weekly: bool | None = None) -> dict:
     DATA.mkdir(exist_ok=True)
     state = _load_state()
     week_ago = (datetime.now() - timedelta(days=7)).isoformat()
     recent = {k: v for k, v in state["recommended"].items() if v >= week_ago}
 
+    extra = build_sections(DATA, state, bus, weekly)
     out = run_graph(bus, DATA, days, top, recent, state["seen"])
-    text = out["text"]
+    sections = extra[:3] + [out["text"]] + extra[3:]  # 주간 요약은 맨 뒤
+    text = "\n\n━━━━━━━━━━\n\n".join(sections)
     (DATA / "latest_briefing.md").write_text(text, encoding="utf-8")
     (DATA / "latest_ranking.json").write_text(json.dumps(out["ranked"][:50], ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -34,12 +41,16 @@ def execute(bus: EventBus, send: bool, days: int = 30, top: int = 5) -> dict:
         if not url:
             error = "DISCORD_WEBHOOK_URL이 .env에 없어서 전송하지 않았어요."
         else:
-            briefing.send_discord(url, text)
+            briefing.send_discord(url, sections)
             sent = True
             now = datetime.now().isoformat()
             state["recommended"].update({p["id"]: now for p in out["picks"] + out["new_hits"]})
-    bus.emit("briefer", "sent" if sent else "not_sent", "디스코드 전송 완료" if sent else (error or "전송 안 함 (미리보기)"))
+    bus.emit("briefer", "sent" if sent else "not_sent",
+             f"디스코드에 메시지 {len(sections)}개 전송 완료" if sent else (error or "전송 안 함 (미리보기)"))
 
+    pending = state.pop("claude_code_release_pending", None)
+    if sent and pending:
+        state["claude_code_release"] = pending
     state["seen"] = sorted(set(state["seen"]) | {it["id"] for it in out["items"]})
     STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
     bus.save(DATA / "events")
