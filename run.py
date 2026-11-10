@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from scout.events import EventBus
-from scout.pipeline import execute
+from scout.pipeline import execute, should_skip_scheduled
 
 
 def main() -> None:
@@ -20,8 +20,12 @@ def main() -> None:
     ap.add_argument("--days", type=int, default=30, help="최근 며칠 대화를 볼지")
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--verbose", action="store_true", help="부서별 진행 상황 출력")
-    ap.add_argument("--weekly", action="store_true", help="월요일이 아니어도 지난주 요약 포함")
+    ap.add_argument("--weekly", action="store_true", help="이번 주에 이미 보냈어도 지난주 요약 포함")
+    ap.add_argument("--scheduled", action="store_true", help="자동 실행용: 오늘 이미 보냈거나 새벽이면 건너뜀")
     args = ap.parse_args()
+    if args.scheduled and (reason := should_skip_scheduled()):
+        print(reason)
+        return
     load_dotenv(Path(__file__).parent / ".env")
 
     bus = EventBus()

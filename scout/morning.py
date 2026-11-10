@@ -3,7 +3,7 @@
 1. 📂 어제 작업 브리핑      — 대화 기록 + Git
 2. 🩺 상태 점검              — 마감 D-day, GitHub(push 안 한 커밋·Actions 실패), 배포 앱 응답
 3. 📊 사용량·습관 팁·업데이트 — 어제 토큰, 습관 팁, Claude Code 새 버전
-4. 📝 주간 요약 (월요일)      — 지난주 작업·커밋, 대화 정리 추천
+4. 📝 주간 요약 (그 주 첫 전송) — 지난주 작업·커밋, 대화 정리 추천
 """
 import json
 import re
@@ -224,8 +224,18 @@ def _similar(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb) if ta and tb else 0.0
 
 
+def week_start(today: date) -> date:
+    """today가 속한 주의 월요일."""
+    return today - timedelta(days=today.weekday())
+
+
+def weekly_due(state: dict, today: date) -> bool:
+    """이번 주에 아직 지난주 요약을 보내지 않았으면 True (월요일에 PC를 안 켠 주도 빠지지 않게)."""
+    return state.get("weekly_sent") != week_start(today).isoformat()
+
+
 def weekly_section(today: date) -> str:
-    end = datetime.combine(today, datetime.min.time())
+    end = datetime.combine(week_start(today), datetime.min.time())  # 언제 보내도 지난주 월~일
     start = end - timedelta(days=7)
     sessions = read_sessions(start, end)
     lines = [f"**📝 지난주 요약** ({start:%m/%d}~{(end - timedelta(days=1)):%m/%d})",
@@ -239,7 +249,7 @@ def weekly_section(today: date) -> str:
 
     commits = []
     for repo in desktop_repos():
-        n = _run(["git", "log", "--since=7 days ago", "--oneline"], repo)
+        n = _run(["git", "log", f"--since={start:%Y-%m-%d} 00:00:00", f"--until={end:%Y-%m-%d} 00:00:00", "--oneline"], repo)
         if n:
             commits.append((repo.name, len(n.splitlines())))
     commits.sort(key=lambda x: -x[1])
@@ -264,8 +274,8 @@ def weekly_section(today: date) -> str:
     return "\n".join(lines)
 
 
-def build_sections(data_dir: Path, state: dict, bus=None, weekly: bool | None = None) -> list[str]:
-    """어제 작업 · 상태 점검 · 사용량 섹션(+ 월요일 주간 요약)을 만든다. bus가 있으면 부서 진행 상황을 알린다."""
+def build_sections(data_dir: Path, state: dict, bus=None, weekly: bool = False) -> list[str]:
+    """어제 작업 · 상태 점검 · 사용량 섹션(+ weekly면 주간 요약)을 만든다. bus가 있으면 부서 진행 상황을 알린다."""
     emit = bus.emit if bus else (lambda *a, **k: None)
     today = date.today()
     yday = datetime.combine(today - timedelta(days=1), datetime.min.time())
@@ -277,7 +287,7 @@ def build_sections(data_dir: Path, state: dict, bus=None, weekly: bool | None = 
     emit("inspector", "work", "마감·GitHub·배포 앱 점검 중")
     sections.append(status_section(today, data_dir))
     sections.append(usage_section(sessions, state))
-    if weekly or (weekly is None and today.weekday() == 0):
+    if weekly:
         emit("inspector", "work", "지난주 요약 정리 중")
         sections.append(weekly_section(today))
     emit("inspector", "done", f"아침 점검 섹션 {len(sections)}개 완료")
