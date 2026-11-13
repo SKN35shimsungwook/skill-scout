@@ -1,10 +1,12 @@
 """한 번의 아침 점검 실행 (아침 자동 실행과 2D 오피스 화면이 함께 쓴다).
 
 디스코드에는 섹션마다 메시지를 따로 보낸다:
-어제 작업 → 상태 점검 → 사용량·팁·업데이트 → 도구 추천 → (그 주 첫 전송) 지난주 요약
+어제 작업 → 할일 지킴이 → 상태 점검 → 사용량·팁·업데이트 → 도구 추천 → (그 주 첫 전송) 지난주 요약
 """
 import json
 import os
+import subprocess
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -36,6 +38,22 @@ def should_skip_scheduled() -> str | None:
     return scheduled_skip_reason(_load_state(), datetime.now())
 
 
+TODO_SCRIPT = Path.home() / ".claude" / "skills" / "todo-keeper" / "scripts" / "todo.py"
+
+
+def todo_section(bus: EventBus) -> str:
+    """할일 지킴이(todo-keeper) 요약. 스크립트가 없거나 실패해도 브리핑은 그대로 보낸다."""
+    if not TODO_SCRIPT.exists():
+        return ""
+    try:
+        r = subprocess.run([sys.executable, "-I", "-X", "utf8", str(TODO_SCRIPT), "brief"],
+                           capture_output=True, text=True, encoding="utf-8", timeout=30)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception as e:  # noqa: BLE001
+        bus.emit("briefer", "todo_error", f"할일 요약 실패: {e}")
+        return ""
+
+
 def execute(bus: EventBus, send: bool, days: int = 30, top: int = 5, weekly: bool | None = None) -> dict:
     DATA.mkdir(exist_ok=True)
     state = _load_state()
@@ -47,6 +65,9 @@ def execute(bus: EventBus, send: bool, days: int = 30, top: int = 5, weekly: boo
     extra = build_sections(DATA, state, bus, include_weekly)
     out = run_graph(bus, DATA, days, top, recent, state["seen"])
     sections = extra[:3] + [out["text"]] + extra[3:]  # 주간 요약은 맨 뒤
+    todo = todo_section(bus)
+    if todo:
+        sections.insert(1 if sections else 0, todo)  # 어제 작업 바로 다음
     text = "\n\n━━━━━━━━━━\n\n".join(sections)
     (DATA / "latest_briefing.md").write_text(text, encoding="utf-8")
     (DATA / "latest_ranking.json").write_text(json.dumps(out["ranked"][:50], ensure_ascii=False, indent=1), encoding="utf-8")
