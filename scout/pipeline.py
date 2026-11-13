@@ -38,7 +38,7 @@ def should_skip_scheduled() -> str | None:
     return scheduled_skip_reason(_load_state(), datetime.now())
 
 
-TODO_SCRIPT = Path.home() / ".claude" / "skills" / "todo-keeper" / "scripts" / "todo.py"
+TODO_SCRIPT = Path.home() / "Desktop" / "todo-keeper" / "scripts" / "todo.py"  # 별도 저장소 SKN35shimsungwook/todo-keeper
 
 
 def todo_section(bus: EventBus) -> str:
